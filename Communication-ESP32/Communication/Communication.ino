@@ -1,47 +1,46 @@
 /*
   ================================================================
-                      GATEWAY ESP32 CODE
+         GATEWAY ESP32 CODE (FIXED SSL/TLS for HiveMQ)
   ================================================================
   Fungsi utama:
   1. Menerima data sensor dari Robot via ESP-NOW.
-  2. Meneruskan data sensor tersebut ke MQTT Broker (untuk Node-RED).
-  3. Menerima perintah dari MQTT Broker (dari Node-RED).
+  2. Meneruskan data sensor tersebut ke MQTT Broker (Secure Port 8883).
+  3. Menerima perintah dari MQTT Broker.
   4. Meneruskan perintah tersebut ke Robot via ESP-NOW.
-
-  Library yang dibutuhkan (Install via Library Manager):
-  - PubSubClient by Nick O'Leary
-  - ArduinoJson by Benoit Blanchon
 */
 
 #include <esp_now.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <WiFiClientSecure.h> 
 
 // -- Konfigurasi Jaringan & MQTT --
-#define WIFI_SSID "GANTI_DENGAN_NAMA_WIFI"
-#define WIFI_PASS "GANTI_DENGAN_PASSWORD_WIFI"
+#define WIFI_SSID "iPhone (4)"
+#define WIFI_PASS "chibii26"
 
-#define MQTT_SERVER "GANTI_DENGAN_IP_MQTT_BROKER"
-#define MQTT_PORT 1883
-#define MQTT_USER "" // Kosongkan jika tidak pakai username
-#define MQTT_PASS "" // Kosongkan jika tidak pakai password
+// Server HiveMQ 
+#define MQTT_SERVER "175c5384e334440fbed6f0490545823f.s1.eu.hivemq.cloud"
+#define MQTT_PORT 8883
+
+#define MQTT_USER "kelompok9"      
+#define MQTT_PASS "AgriPatrol123!" 
 
 #define MQTT_PUB_TOPIC "robot/data"           // Topik untuk publikasi data sensor
 #define MQTT_SUB_TOPIC_CONTROL "robot/control"// Topik untuk subscribe perintah gerak
 #define MQTT_SUB_TOPIC_MODE "robot/mode"      // Topik untuk subscribe perintah mode
 
 // -- Konfigurasi ESP-NOW --
-// GANTI DENGAN ALAMAT MAC ESP32 ROBOT
+// GANTI DENGAN ALAMAT MAC ESP32 ROBOT (Update sesuai device Alvin/Deandro)
 uint8_t carAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 // -- Deklarasi Objek Global --
-WiFiClient espClient;
+// Menggunakan WiFiClientSecure agar bisa connect ke port 8883 (SSL)
+WiFiClientSecure espClient; 
 PubSubClient client(espClient);
 esp_now_peer_info_t peerInfo;
 
 // -- Struktur Data untuk Komunikasi --
-// Struct ini harus SAMA PERSIS dengan yang ada di kode Robot
 typedef struct Message {
   char type;    // 'C' (Command) atau 'S' (Sensor)
   char cmd;     // F, B, L, R, S, P, M
@@ -49,8 +48,8 @@ typedef struct Message {
   float hum;
 } Message;
 
-// -- Prototipe Fungsi --
-void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len);
+// -- Prototipe Fungsi (Updated for ESP32 Core v2.x) --
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len);
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 void callback(char* topic, byte* payload, unsigned int length);
 void reconnect();
@@ -64,7 +63,7 @@ void setup() {
   // 1. Connect ke WiFi
   Serial.print("Connecting to ");
   Serial.println(WIFI_SSID);
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP_STA); 
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -87,12 +86,15 @@ void setup() {
   peerInfo.channel = 0;  
   peerInfo.encrypt = false;
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add peer");
-    return;
+    Serial.println("Failed to add peer (Mungkin robot belum nyala/MAC salah)");
   }
-  Serial.println("ESP-NOW initialized, peer added.");
+  Serial.println("ESP-NOW initialized.");
 
   // 3. Konfigurasi MQTT
+  // Set Insecure agar sertifikat SSL tidak perlu diverifikasi manual
+  espClient.setInsecure();
+  espClient.setTimeout(10); // Tambahan: Timeout lebih lama biar koneksi stabil
+  
   client.setServer(MQTT_SERVER, MQTT_PORT);
   client.setCallback(callback);
   Serial.println("MQTT configured.");
@@ -110,21 +112,16 @@ void loop() {
 
 // -- Fungsi-fungsi Callback --
 
-// Callback saat data diterima dari Robot (via ESP-NOW)
-void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   Message msg;
   memcpy(&msg, incomingData, sizeof(msg));
 
-  // Pastikan tipe data adalah 'S' (Sensor)
   if (msg.type == 'S') {
-    Serial.print("Sensor data received from Robot: ");
-    Serial.print("Temp=");
+    Serial.print("Data from Robot: Temp=");
     Serial.print(msg.temp);
-    Serial.print("C, Hum=");
-    Serial.print(msg.hum);
-    Serial.println("%");
+    Serial.print(", Hum=");
+    Serial.println(msg.hum);
 
-    // Buat JSON object untuk dikirim ke MQTT
     StaticJsonDocument<128> doc;
     doc["temperature"] = msg.temp;
     doc["humidity"] = msg.hum;
@@ -132,68 +129,56 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
     char buffer[128];
     serializeJson(doc, buffer);
 
-    // Publikasikan ke topik MQTT
     client.publish(MQTT_PUB_TOPIC, buffer);
-    Serial.print("Published to MQTT topic '");
-    Serial.print(MQTT_PUB_TOPIC);
-    Serial.print("': ");
-    Serial.println(buffer);
   }
 }
 
-// Callback saat data selesai dikirim (via ESP-NOW)
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.print("ESP-NOW Send Status: ");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Success" : "Fail");
+  // Biarkan kosong agar serial monitor tidak penuh
 }
 
-// Callback saat data diterima dari MQTT Broker
 void callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message arrived on topic: ");
+  Serial.print("MQTT Msg on [");
   Serial.print(topic);
-  Serial.print(". Message: ");
-  String message;
+  Serial.print("]: ");
+  
+  String messageStr;
   for (int i = 0; i < length; i++) {
-    message += (char)payload[i];
+    messageStr += (char)payload[i];
   }
-  Serial.println(message);
+  Serial.println(messageStr);
 
   Message cmd_msg;
-  cmd_msg.type = 'C'; // Tipe pesan adalah Command
+  cmd_msg.type = 'C'; 
+  cmd_msg.temp = 0;
+  cmd_msg.hum = 0;
 
-  // Cek topik dan isi pesannya
   if (String(topic) == MQTT_SUB_TOPIC_CONTROL || String(topic) == MQTT_SUB_TOPIC_MODE) {
-    if (message.length() > 0) {
-      cmd_msg.cmd = message[0]; // Ambil karakter pertama sebagai perintah
+    if (messageStr.length() > 0) {
+      cmd_msg.cmd = messageStr[0]; 
       
-      // Kirim perintah ke Robot via ESP-NOW
       esp_err_t result = esp_now_send(carAddress, (uint8_t *) &cmd_msg, sizeof(cmd_msg));
 
       if (result == ESP_OK) {
-        Serial.print("Sent command '");
-        Serial.print(cmd_msg.cmd);
-        Serial.println("' to Robot.");
+        Serial.println(">> Command forwarded to Robot");
       } else {
-        Serial.println("Error sending command to Robot.");
+        Serial.println(">> Forward failed");
       }
     }
   }
 }
 
-// Fungsi untuk re-koneksi ke MQTT Broker
 void reconnect() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
-    // Coba konek
-    if (client.connect("GatewayESP32", MQTT_USER, MQTT_PASS)) {
+    String clientId = "GatewayESP32-";
+    clientId += String(random(0xffff), HEX);
+    
+    // Connect menggunakan USER dan PASS yang baru
+    if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
       Serial.println("connected");
-      // Subscribe ke topik-topik perintah
       client.subscribe(MQTT_SUB_TOPIC_CONTROL);
       client.subscribe(MQTT_SUB_TOPIC_MODE);
-      Serial.print("Subscribed to: ");
-      Serial.print(MQTT_SUB_TOPIC_CONTROL);
-      Serial.print(" and ");
-      Serial.println(MQTT_SUB_TOPIC_MODE);
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
