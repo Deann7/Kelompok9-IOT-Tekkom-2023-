@@ -19,13 +19,15 @@
 #include <ArduinoJson.h>
 
 // -- Konfigurasi Jaringan & MQTT --
+// Ganti dengan kredensial WiFi Anda
 #define WIFI_SSID "GANTI_DENGAN_NAMA_WIFI"
 #define WIFI_PASS "GANTI_DENGAN_PASSWORD_WIFI"
 
-#define MQTT_SERVER "GANTI_DENGAN_IP_MQTT_BROKER"
+// Menggunakan EMQX Public Broker (Free MQTT Broker)
+#define MQTT_SERVER "broker.emqx.io"
 #define MQTT_PORT 1883
-#define MQTT_USER "" // Kosongkan jika tidak pakai username
-#define MQTT_PASS "" // Kosongkan jika tidak pakai password
+#define MQTT_USER "" // EMQX public broker tidak perlu username
+#define MQTT_PASS "" // EMQX public broker tidak perlu password
 
 #define MQTT_PUB_TOPIC "robot/data"           // Topik untuk publikasi data sensor
 #define MQTT_SUB_TOPIC_CONTROL "robot/control"// Topik untuk subscribe perintah gerak
