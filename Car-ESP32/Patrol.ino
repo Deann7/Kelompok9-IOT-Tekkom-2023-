@@ -34,10 +34,14 @@ static void take_sensor_reading() {
   vTaskDelay(pdMS_TO_TICKS(200));
 }
 
-// TASK 2: PATROL
+// TASK 2: PATROL (Modified - Sensor reading setiap 5 detik di mode manual)
 void TaskPatrol(void *pvParameters) {
+  TickType_t lastSensorRead = 0;
+  const TickType_t sensorInterval = pdMS_TO_TICKS(5000); // 5 detik
+  
   for (;;) {
     if (isPatrolMode) {
+      // Mode PATROL: Baca sensor + gerak otomatis
       take_sensor_reading();
 
       // --- Siklus Kanan ---
@@ -73,8 +77,31 @@ void TaskPatrol(void *pvParameters) {
       stopMotors(); vTaskDelay(200);
 
     } else {
-      // Jika mode manual, tidur lama biar hemat CPU
-      vTaskDelay(pdMS_TO_TICKS(1000));
+      // Mode MANUAL: Tetap baca sensor setiap 5 detik (tanpa servo arm)
+      TickType_t now = xTaskGetTickCount();
+      if ((now - lastSensorRead) >= sensorInterval) {
+        Message sensorData;
+        sensorData.type = 'S';
+        
+        // Baca sensor tanpa turun-naikkan servo arm
+        sensorData.temp = dht.readTemperature();
+        sensorData.hum = dht.readHumidity();
+        
+        if (!isnan(sensorData.temp) && !isnan(sensorData.hum)) {
+          if (xQueueSend(sensorQueue, &sensorData, pdMS_TO_TICKS(100)) == pdPASS) {
+            Serial.print("Manual Mode - Temp: ");
+            Serial.print(sensorData.temp);
+            Serial.print("°C, Hum: ");
+            Serial.print(sensorData.hum);
+            Serial.println("%");
+          }
+        }
+        
+        lastSensorRead = now;
+      }
+      
+      // Tidur sebentar untuk hemat CPU
+      vTaskDelay(pdMS_TO_TICKS(500));
     }
   }
 }

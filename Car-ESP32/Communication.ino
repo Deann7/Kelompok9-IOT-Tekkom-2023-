@@ -26,7 +26,7 @@ void TaskComm(void *pvParameters) {
 //================================================================
 // CALLBACK FUNCTION ESP-NOW (Data Masuk)
 //================================================================
-void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len) {
   Message packet;
   memcpy(&packet, incomingData, sizeof(packet));
   

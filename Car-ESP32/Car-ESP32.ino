@@ -27,8 +27,8 @@ typedef struct Message {
 #define DHT_TYPE DHT11
 
 // -- Konfigurasi Global --
-// GANTI DENGAN ALAMAT MAC GATEWAY ANDA
-uint8_t gatewayAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+// GANTI DENGAN ALAMAT MAC GATEWAY ANDA (ESP32 yang connect WiFi)
+uint8_t gatewayAddress[] = {0xD0, 0xEF, 0x76, 0x34, 0x12, 0xC4};
 bool isPatrolMode = false; // Status mode default: Manual
 
 // -- Deklarasi Objek & Handle Global (Biar file lain bisa baca) --
@@ -41,7 +41,7 @@ QueueHandle_t sensorQueue;
 // -- Prototipe Fungsi (Biar compiler tau fungsi ini ada di file lain) --
 void TaskComm(void *pvParameters);
 void TaskPatrol(void *pvParameters);
-void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len);
+void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len);
 void TaskControl(void *pvParameters);
 
 // -- Helper Functions --
@@ -74,6 +74,13 @@ void setup() {
 
   // Init ESP-NOW
   WiFi.mode(WIFI_STA);
+  WiFi.setChannel(6); // CRITICAL: Force channel 6 (same as Gateway)
+  
+  Serial.print("Robot MAC Address: ");
+  Serial.println(WiFi.macAddress());
+  Serial.print("Robot WiFi Channel: ");
+  Serial.println(WiFi.channel());
+  
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
     return;
@@ -82,10 +89,18 @@ void setup() {
 
   esp_now_peer_info_t peerInfo = {};
   memcpy(peerInfo.peer_addr, gatewayAddress, 6);
-  peerInfo.channel = 0;  
+  peerInfo.channel = 6; // CRITICAL: Set to channel 6
   peerInfo.encrypt = false;
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add peer");
+  } else {
+    Serial.println("Gateway peer added successfully!");
+    Serial.print("Target Gateway MAC: ");
+    for(int i=0; i<6; i++){
+      Serial.printf("%02X", gatewayAddress[i]);
+      if(i<5) Serial.print(":");
+    }
+    Serial.println();
   }
 
   // Init Queue

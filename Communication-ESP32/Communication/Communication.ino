@@ -1,14 +1,3 @@
-/*
-  ================================================================
-         GATEWAY ESP32 CODE (FIXED SSL/TLS for HiveMQ)
-  ================================================================
-  Fungsi utama:
-  1. Menerima data sensor dari Robot via ESP-NOW.
-  2. Meneruskan data sensor tersebut ke MQTT Broker (Secure Port 8883).
-  3. Menerima perintah dari MQTT Broker.
-  4. Meneruskan perintah tersebut ke Robot via ESP-NOW.
-*/
-
 #include <esp_now.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
@@ -16,23 +5,23 @@
 #include <WiFiClientSecure.h> 
 
 // -- Konfigurasi Jaringan & MQTT --
-#define WIFI_SSID "iPhone (4)"
-#define WIFI_PASS "chibii26"
+#define WIFI_SSID "Galaxy A55 5G D016"
+#define WIFI_PASS "alvin2005"
 
-// Server HiveMQ 
-#define MQTT_SERVER "175c5384e334440fbed6f0490545823f.s1.eu.hivemq.cloud"
+// Server HiveMQ
+#define MQTT_SERVER "89288a44b913422cb31b59472927642a.s1.eu.hivemq.cloud"
 #define MQTT_PORT 8883
 
-#define MQTT_USER "kelompok9"      
-#define MQTT_PASS "AgriPatrol123!" 
+#define MQTT_USER "kelompok9_terbaru123"
+#define MQTT_PASS "AgriPatro123l123!"
 
-#define MQTT_PUB_TOPIC "robot/data"           // Topik untuk publikasi data sensor
+#define MQTT_PUB_TOPIC "robot/data"           
 #define MQTT_SUB_TOPIC_CONTROL "robot/control"// Topik untuk subscribe perintah gerak
 #define MQTT_SUB_TOPIC_MODE "robot/mode"      // Topik untuk subscribe perintah mode
 
 // -- Konfigurasi ESP-NOW --
 // GANTI DENGAN ALAMAT MAC ESP32 ROBOT (Update sesuai device Alvin/Deandro)
-uint8_t carAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint8_t carAddress[] = {0x4C, 0xC3, 0x82, 0xBF, 0x9A, 0x50};
 
 // -- Deklarasi Objek Global --
 // Menggunakan WiFiClientSecure agar bisa connect ke port 8883 (SSL)
@@ -48,8 +37,8 @@ typedef struct Message {
   float hum;
 } Message;
 
-// -- Prototipe Fungsi (Updated for ESP32 Core v2.x) --
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len);
+// -- Prototipe Fungsi (Updated for ESP32 Core v3.x) --
+void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len);
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 void callback(char* topic, byte* payload, unsigned int length);
 void reconnect();
@@ -72,6 +61,10 @@ void setup() {
   Serial.println("\nWiFi connected!");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+  Serial.print("WiFi Channel: ");
+  Serial.println(WiFi.channel());
+  Serial.print("Gateway MAC Address: ");
+  Serial.println(WiFi.macAddress());
 
   // 2. Inisialisasi ESP-NOW
   if (esp_now_init() != ESP_OK) {
@@ -79,7 +72,9 @@ void setup() {
     return;
   }
   esp_now_register_recv_cb(OnDataRecv);
-  esp_now_register_send_cb(OnDataSent);
+  Serial.println("ESP-NOW Receive Callback registered");
+  // Send callback tidak wajib, bisa di-comment jika tidak perlu
+  // esp_now_register_send_cb(OnDataSent);
 
   // Daftarkan Robot sebagai peer
   memcpy(peerInfo.peer_addr, carAddress, 6);
@@ -112,30 +107,43 @@ void loop() {
 
 // -- Fungsi-fungsi Callback --
 
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+void OnDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len) {
+  Serial.println(">> ESP-NOW: Data received!"); // Debug: callback dipanggil
+  
   Message msg;
   memcpy(&msg, incomingData, sizeof(msg));
 
-  if (msg.type == 'S') {
-    Serial.print("Data from Robot: Temp=");
-    Serial.print(msg.temp);
-    Serial.print(", Hum=");
-    Serial.println(msg.hum);
+  Serial.print(">> Type: ");
+  Serial.print(msg.type);
+  Serial.print(", Cmd: ");
+  Serial.println(msg.cmd);
 
-    StaticJsonDocument<128> doc;
+  if (msg.type == 'S') {
+    Serial.print(">> Data from Robot: Temp=");
+    Serial.print(msg.temp);
+    Serial.print("°C, Hum=");
+    Serial.print(msg.hum);
+    Serial.println("%");
+
+    JsonDocument doc;
     doc["temperature"] = msg.temp;
     doc["humidity"] = msg.hum;
 
     char buffer[128];
     serializeJson(doc, buffer);
 
-    client.publish(MQTT_PUB_TOPIC, buffer);
+    if (client.publish(MQTT_PUB_TOPIC, buffer)) {
+      Serial.println(">> MQTT: Published to robot/data");
+    } else {
+      Serial.println(">> MQTT: Publish FAILED!");
+    }
   }
 }
 
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  // Biarkan kosong agar serial monitor tidak penuh
-}
+// Callback ini opsional, tidak wajib dipakai
+// void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+//   // Kosong - tidak perlu log
+// }
 
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("MQTT Msg on [");
