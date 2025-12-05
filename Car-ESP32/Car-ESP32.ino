@@ -1,5 +1,5 @@
 #include <ESP32Servo.h>
-#include <DHT.h>
+// #include <DHT.h>  // DISABLED: DHT11 sensor rusak, menggunakan mock data
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/queue.h>
@@ -23,8 +23,8 @@ typedef struct Message {
 #define IN4 26 // Pin motor
 #define STEERING_SERVO_PIN 15 // Pin servo kemudi
 #define SENSOR_ARM_SERVO_PIN 12 // Pin servo lengan sensor
-#define DHT_PIN 4               // Pin sensor DHT11
-#define DHT_TYPE DHT11
+// #define DHT_PIN 4               // DISABLED: DHT11 sensor rusak
+// #define DHT_TYPE DHT11
 
 // -- Konfigurasi Global --
 // GANTI DENGAN ALAMAT MAC GATEWAY ANDA (ESP32 yang connect WiFi)
@@ -34,7 +34,7 @@ bool isPatrolMode = false; // Status mode default: Manual
 // -- Deklarasi Objek & Handle Global (Biar file lain bisa baca) --
 Servo steeringServo;
 Servo sensorArmServo;
-DHT dht(DHT_PIN, DHT_TYPE);
+// DHT dht(DHT_PIN, DHT_TYPE);  // DISABLED: DHT11 sensor rusak, menggunakan mock data
 QueueHandle_t commandQueue;
 QueueHandle_t sensorQueue;
 
@@ -70,7 +70,8 @@ void setup() {
   sensorArmServo.attach(SENSOR_ARM_SERVO_PIN);
   steeringServo.write(90); 
   sensorArmServo.write(0);  
-  dht.begin();
+  // dht.begin();  // DISABLED: DHT11 sensor rusak, menggunakan mock data
+  Serial.println("NOTE: Using MOCK sensor data (DHT11 disabled)");
 
   // Init ESP-NOW
   WiFi.mode(WIFI_STA);

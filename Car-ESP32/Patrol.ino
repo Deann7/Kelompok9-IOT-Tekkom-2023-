@@ -20,16 +20,30 @@ static void take_sensor_reading() {
   sensorArmServo.write(90); // Turun
   vTaskDelay(pdMS_TO_TICKS(1000));
 
-  sensorData.temp = dht.readTemperature();
-  sensorData.hum = dht.readHumidity();
+  // MOCK DATA: DHT11 sensor rusak, menggunakan data simulasi
+  // Simulasi suhu: 25-30°C dengan sedikit variasi
+  // Simulasi kelembaban: 50-70% dengan sedikit variasi
+  static float baseTemp = 27.5;
+  static float baseHum = 60.0;
+  static int counter = 0;
+  
+  // Tambahkan sedikit variasi untuk simulasi
+  sensorData.temp = baseTemp + (counter % 10) * 0.3 - 1.5; // 25.0 - 28.5°C
+  sensorData.hum = baseHum + (counter % 15) * 0.5 - 3.5;   // 56.5 - 64.0%
+  counter++;
+  
+  Serial.print("Patrol: Mock Data - Temp: ");
+  Serial.print(sensorData.temp);
+  Serial.print("°C, Hum: ");
+  Serial.print(sensorData.hum);
+  Serial.println("%");
 
   sensorArmServo.write(0); // Naik
   vTaskDelay(pdMS_TO_TICKS(1000));
 
-  if (!isnan(sensorData.temp) && !isnan(sensorData.hum)) {
-    if (xQueueSend(sensorQueue, &sensorData, pdMS_TO_TICKS(100)) == pdPASS) {
-      Serial.println("Patrol: Queued Data");
-    }
+  // Validasi tidak diperlukan untuk mock data, langsung kirim
+  if (xQueueSend(sensorQueue, &sensorData, pdMS_TO_TICKS(100)) == pdPASS) {
+    Serial.println("Patrol: Queued Data");
   }
   vTaskDelay(pdMS_TO_TICKS(200));
 }
@@ -83,18 +97,25 @@ void TaskPatrol(void *pvParameters) {
         Message sensorData;
         sensorData.type = 'S';
         
-        // Baca sensor tanpa turun-naikkan servo arm
-        sensorData.temp = dht.readTemperature();
-        sensorData.hum = dht.readHumidity();
+        // MOCK DATA: DHT11 sensor rusak, menggunakan data simulasi
+        // Simulasi suhu: 25-30°C dengan sedikit variasi
+        // Simulasi kelembaban: 50-70% dengan sedikit variasi
+        static float baseTemp = 27.5;
+        static float baseHum = 60.0;
+        static int counter = 0;
         
-        if (!isnan(sensorData.temp) && !isnan(sensorData.hum)) {
-          if (xQueueSend(sensorQueue, &sensorData, pdMS_TO_TICKS(100)) == pdPASS) {
-            Serial.print("Manual Mode - Temp: ");
-            Serial.print(sensorData.temp);
-            Serial.print("°C, Hum: ");
-            Serial.print(sensorData.hum);
-            Serial.println("%");
-          }
+        // Tambahkan sedikit variasi untuk simulasi
+        sensorData.temp = baseTemp + (counter % 10) * 0.3 - 1.5; // 25.0 - 28.5°C
+        sensorData.hum = baseHum + (counter % 15) * 0.5 - 3.5;   // 56.5 - 64.0%
+        counter++;
+        
+        // Validasi tidak diperlukan untuk mock data, langsung kirim
+        if (xQueueSend(sensorQueue, &sensorData, pdMS_TO_TICKS(100)) == pdPASS) {
+          Serial.print("Manual Mode - Mock Data - Temp: ");
+          Serial.print(sensorData.temp);
+          Serial.print("°C, Hum: ");
+          Serial.print(sensorData.hum);
+          Serial.println("%");
         }
         
         lastSensorRead = now;
