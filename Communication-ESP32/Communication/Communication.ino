@@ -2,7 +2,10 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-#include <WiFiClientSecure.h> 
+#include <WiFiClientSecure.h>
+
+// -- LED Indicator (Built-in ESP32) --
+#define LED_BUILTIN 2
 
 // -- Konfigurasi Jaringan & MQTT --
 #define WIFI_SSID "Galaxy A55 5G D016"
@@ -45,20 +48,44 @@ void reconnect();
 
 // -- Fungsi Setup --
 void setup() {
+  // Init LED
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
+  
   Serial.begin(115200);
-  delay(1000);
-  Serial.println("Gateway ESP32 Starting...");
+  delay(2000); // Delay lebih lama untuk stabilitas
+  Serial.println("\n========================================");
+  Serial.println("    Gateway ESP32 Starting...");
+  Serial.println("========================================\n");
 
   // 1. Connect ke WiFi
-  Serial.print("Connecting to ");
+  Serial.print("Connecting to WiFi: ");
   Serial.println(WIFI_SSID);
-  WiFi.mode(WIFI_AP_STA); 
+  
+  WiFi.mode(WIFI_AP_STA);
+  delay(100);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED) {
+  
+  // Blink LED while connecting
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) {
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); // Toggle LED
     delay(500);
     Serial.print(".");
+    attempts++;
   }
-  Serial.println("\nWiFi connected!");
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    digitalWrite(LED_BUILTIN, HIGH); // LED ON solid = WiFi OK
+    Serial.println("\n\n✓ WiFi connected!");
+  } else {
+    Serial.println("\n\n✗ WiFi connection FAILED!");
+    Serial.println("Check: 1) Hotspot ON? 2) SSID/Password correct?");
+    while(1) {
+      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN)); // Fast blink = error
+      delay(200);
+    }
+  }
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
   Serial.print("WiFi Channel: ");
@@ -83,16 +110,25 @@ void setup() {
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add peer (Mungkin robot belum nyala/MAC salah)");
   }
-  Serial.println("ESP-NOW initialized.");
+  Serial.println("✓ ESP-NOW initialized.\n");
 
   // 3. Konfigurasi MQTT
-  // Set Insecure agar sertifikat SSL tidak perlu diverifikasi manual
+  Serial.println("Configuring MQTT...");
   espClient.setInsecure();
-  espClient.setTimeout(10); // Tambahan: Timeout lebih lama biar koneksi stabil
+  espClient.setTimeout(10);
   
   client.setServer(MQTT_SERVER, MQTT_PORT);
   client.setCallback(callback);
-  Serial.println("MQTT configured.");
+  Serial.println("✓ MQTT configured.\n");
+  
+  Serial.println("========================================");
+  Serial.println("    Gateway Ready!");
+  Serial.println("========================================");
+  Serial.println("LED Status:");
+  Serial.println("  - Solid ON  = WiFi connected");
+  Serial.println("  - Fast Blink = WiFi error");
+  Serial.println("  - Slow Blink = MQTT connecting");
+  Serial.println("========================================\n");
 }
 
 // -- Loop Utama --
@@ -178,19 +214,41 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 void reconnect() {
   while (!client.connected()) {
+    // Blink LED slowly while connecting MQTT
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    
     Serial.print("Attempting MQTT connection...");
     String clientId = "GatewayESP32-";
     clientId += String(random(0xffff), HEX);
     
     // Connect menggunakan USER dan PASS yang baru
     if (client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
-      Serial.println("connected");
+      digitalWrite(LED_BUILTIN, HIGH); // LED ON solid = MQTT OK
+      Serial.println("connected ✓");
+      Serial.println("Subscribing to topics...");
       client.subscribe(MQTT_SUB_TOPIC_CONTROL);
       client.subscribe(MQTT_SUB_TOPIC_MODE);
+      Serial.println("✓ Ready to receive commands!\n");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
+      Serial.print(" | ");
+      
+      // Print error meaning
+      switch(client.state()) {
+        case -4: Serial.println("TIMEOUT"); break;
+        case -3: Serial.println("CONNECTION_LOST"); break;
+        case -2: Serial.println("CONNECT_FAILED"); break;
+        case -1: Serial.println("DISCONNECTED"); break;
+        case 1: Serial.println("BAD_PROTOCOL"); break;
+        case 2: Serial.println("BAD_CLIENT_ID"); break;
+        case 3: Serial.println("UNAVAILABLE"); break;
+        case 4: Serial.println("BAD_CREDENTIALS"); break;
+        case 5: Serial.println("UNAUTHORIZED"); break;
+        default: Serial.println("UNKNOWN"); break;
+      }
+      
+      Serial.println("Retrying in 5 seconds...\n");
       delay(5000);
     }
   }
