@@ -4,7 +4,7 @@
 #include <ArduinoJson.h>
 #include <WiFiClientSecure.h>
 
-// -- LED Indicator (Built-in ESP32) --
+// -- LED Indicator (Built-in ESP32s) --
 #define LED_BUILTIN 2
 
 // -- Konfigurasi Jaringan & MQTT --
